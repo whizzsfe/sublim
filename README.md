@@ -26,6 +26,9 @@ random burst
 more suprising. better for longer sessions
 ```C:\sublim\sublim.py ./messages.txt s```
 
+Use bird sounds as audio cues for suprise subliminals from your text file
+```C:\sublim\sublim.py ./messages.txt bird```
+
 The font is huge so you should keep your messages brief.
 
 Superior to videos because within a program you get high percision control of timing and randomization.
