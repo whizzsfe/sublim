@@ -10,6 +10,8 @@ import random
 import os
 import time
 
+million = 1000000
+
 class window(qt.QWidget):
     def __init__(self, fpath:str, isRandom: str, isburst: str):
         super().__init__()
@@ -87,9 +89,9 @@ class consiousReinforcement(qt.QWidget):
 
     @Slot()
     def changeText(self ):
-        rgot = random.randrange(0, 1000000)
+        rgot = random.randrange(0, million)
 
-        if rgot < 1000000/6: #one in six chance
+        if rgot < million/6: #one in six chance
             self.readable=True
         if self.isRand:
             self.text.setText(self.lines[random.randrange(0, len(self.lines))])
@@ -105,6 +107,61 @@ class consiousReinforcement(qt.QWidget):
             QTest.qWait(random.randrange(3000,5500))
 
         self.cur += 1
+
+
+
+class surpriser(qt.QWidget):
+    def __init__(self, fpath:str, isRandom: str, isburst: str):
+        super().__init__()
+        self.isRand = (isRandom == "random")
+        self.isBurst = (isburst == "burst")
+        with open(fpath, 'r') as file:
+            self.lines = file.readlines()
+
+        self.cur = 0
+        self.timeMs = 44 # adjust this if you want. 44 is at good timing tho. should be 34-50ms for it still to be subliminal
+
+        self.tm = QTimer()
+        self.tm.setInterval(self.timeMs)
+
+        self.tm.timeout.connect(self.changeText)
+
+        self.layout = qt.QGridLayout()
+        self.setLayout(self.layout)
+
+
+        self.text = qt.QLabel()
+        self.text.setAlignment(Qt.AlignHCenter)
+        self.font  = QFont("Arial", 60)
+        self.text.setFont(self.font)
+
+        self.layout.addWidget(self.text,0,0)
+        self.tm.start()
+        self.show()
+
+    @Slot()
+    def changeText(self ):
+        if self.isRand:
+            self.text.setText(self.lines[random.randrange(0, len(self.lines))])
+        else:
+            self.text.setText(self.lines[self.cur % len(self.lines)])
+
+        rnd = random.randrange(0,million)
+        if self.isBurst and (self.cur % len(self.lines) == 0):
+            QTest.qWait(self.timeMs)
+            self.text.setText("")
+            if rnd < million / 6.0:
+                QTest.qWait(random.randrange(5000,10000))
+                self.text.setText(self.lines[random.randrange(0, len(self.lines))])
+                QTest.qWait(self.timeMs)
+                self.text.setText("")
+            QTest.qWait(random.randrange(3000,30000))
+
+
+        self.cur += 1
+
+
+
 
 
 if __name__=="__main__":
@@ -123,8 +180,14 @@ if __name__=="__main__":
         elif sys.argv[2] == "c":
             win=consiousReinforcement(sys.argv[1], "random", "")
             win.setMinimumSize(1600, 52)
+        elif sys.argv[2] == "s":
+            win=surpriser(sys.argv[1], "random", "burst")
+            win.setMinimumSize(1600, 52)
     elif len(sys.argv) == 2:
         win=window(sys.argv[1], "random", "burst")
         win.setMinimumSize(1600, 52)
+    else:
+        print("USAGE: python ./sublim.py [text file] [options]")
+        quit()
 
     app.exec()
