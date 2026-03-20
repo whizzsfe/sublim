@@ -11,11 +11,20 @@ should look like this
 
 or with specific options
 
+concious reinforcement
 ```C:\sublim\sublim.py ./messages.txt c```
+
+randomize. don't burst
 ```C:\sublim\sublim.py ./messages.txt r```
+
+burst. don't randomize
 ```C:\sublim\sublim.py ./messages.txt b```
+
+random burst
 ```C:\sublim\sublim.py ./messages.txt rb```
 
+more suprising. better for longer sessions
+```C:\sublim\sublim.py ./messages.txt s```
 
 The font is huge so you should keep your messages brief.
 
