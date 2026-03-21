@@ -34,3 +34,5 @@ The font is huge so you should keep your messages brief.
 Superior to videos because within a program you get high percision control of timing and randomization.
 
 best with a high refresh-rate and low pixel response-time monitor
+
+Records the amount of time the app is open in rectime.txt
