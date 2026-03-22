@@ -36,3 +36,7 @@ Superior to videos because within a program you get high percision control of ti
 best with a high refresh-rate and low pixel response-time monitor
 
 Records the amount of time the app is open in rectime.txt
+
+Do this for a day by day breakdown of your sessions.
+
+```python ./procRecTime.py```
