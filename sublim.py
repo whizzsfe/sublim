@@ -16,7 +16,7 @@ import datetime
 
 million = 1000000
 
-class window(qt.QWidget):
+class windowBase(qt.QWidget):
     def __init__(self, fpath:str, isRandom: str, isburst: str):
         super().__init__()
         self.isRand = (isRandom == "random")
@@ -29,7 +29,7 @@ class window(qt.QWidget):
 
         self.startedTime = datetime.datetime.now()
         self.timeFile = open("./rectime.txt", "a")
-        self.timeFile.write(self.startedTime.strftime("date %Y-%m-%d\n"))
+        self.timeFile.write(self.startedTime.strftime("date %Y-%m-%d %I:%M:%S %p\n"))
 
 
         self.tm = QTimer()
@@ -51,19 +51,6 @@ class window(qt.QWidget):
         self.tm.start()
         self.show()
 
-    @Slot()
-    def changeText(self ):
-        if self.isRand:
-            self.text.setText(self.lines[random.randrange(0, len(self.lines))])
-        else:
-            self.text.setText(self.lines[self.cur % len(self.lines)])
-
-        if self.isBurst and (self.cur % len(self.lines) == 0):
-            QTest.qWait(self.timeMs)
-            self.text.setText("")
-            QTest.qWait(random.randrange(3000,5500))
-
-        self.cur += 1
 
     def closeEvent(self, event: QCloseEvent):
         delta = datetime.datetime.now() - self.startedTime
@@ -74,44 +61,38 @@ class window(qt.QWidget):
         event.accept()
 
 
-class consiousReinforcement(qt.QWidget):
+class window(windowBase):
     def __init__(self, fpath:str, isRandom: str, isburst: str):
-        super().__init__()
-        self.isRand = (isRandom == "random")
-        self.isBurst = (isburst == "burst")
-        with open(fpath, 'r') as file:
-            self.lines = file.readlines()
-
-        self.readable = False
-
-        self.cur = 0
-        self.timeMs = 44 # adjust this if you want. 44 is at good timing tho. should be 34-50ms for it still to be subliminal
-
-        self.startedTime = datetime.datetime.now()
-        self.timeFile = open("./rectime.txt", "a")
-        self.timeFile.write(self.startedTime.strftime("date %Y-%m-%d\n"))
-
-
-        self.tm = QTimer()
-        self.tm.setInterval(self.timeMs)
-
-        self.tm.timeout.connect(self.changeText)
-
-        self.layout = qt.QGridLayout()
-        self.setLayout(self.layout)
-
-        self.text = qt.QLabel()
-        self.text.setAlignment(Qt.AlignHCenter)
-        self.font  = QFont("Arial", 60)
-        self.text.setFont(self.font)
-
-        self.layout.addWidget(self.text,0,0)
-        self.setMinimumSize(1600, 52)
-        self.tm.start()
-        self.show()
+        super().__init__(fpath, isRandom, isburst)
+        self.burstWaitMin = 3000
+        self.burstWaitMax = 5500
 
     @Slot()
-    def changeText(self ):
+    def changeText(self):
+        if self.isRand:
+            self.text.setText(self.lines[random.randrange(0, len(self.lines))])
+        else:
+            self.text.setText(self.lines[self.cur % len(self.lines)])
+
+        if self.isBurst and (self.cur % len(self.lines) == 0):
+            QTest.qWait(self.timeMs)
+            self.text.setText("")
+            QTest.qWait(random.randrange(self.burstWaitMin ,self.burstWaitMax))
+
+        self.cur += 1
+
+
+class consiousReinforcement(windowBase):
+    def __init__(self, fpath:str, isRandom: str, isburst: str):
+        super().__init__(fpath, isRandom, isburst)
+
+        self.readable = False
+        self.burstWaitMin = 3000
+        self.burstWaitMax = 5500
+        self.readableWait = 2500
+
+    @Slot()
+    def changeText(self):
         rgot = random.randrange(0, million)
 
         if rgot < million/6: #one in six chance
@@ -122,62 +103,29 @@ class consiousReinforcement(qt.QWidget):
             self.text.setText(self.lines[self.cur % len(self.lines)])
 
         if self.readable:
-            QTest.qWait(2500)
+            QTest.qWait(self.readableWait)
             self.readable=False
         if self.isBurst and (self.cur % len(self.lines) == 0):
             QTest.qWait(self.timeMs)
             self.text.setText("")
-            QTest.qWait(random.randrange(3000,5500))
+            QTest.qWait(random.randrange(self.burstWaitMin,self.burstWaitMax))
 
         self.cur += 1
 
-    def closeEvent(self, event: QCloseEvent):
-        delta = datetime.datetime.now() - self.startedTime
-        seconds = delta.total_seconds()
-        self.timeFile.write(str(seconds) + " seconds\n")
-        self.timeFile.close()
-
-        event.accept()
 
 
 
-
-class surpriser(qt.QWidget):
+class surpriser(windowBase):
     def __init__(self, fpath:str, isRandom: str, isburst: str):
-        super().__init__()
-        self.isRand = (isRandom == "random")
-        self.isBurst = (isburst == "burst")
-        with open(fpath, 'r') as file:
-            self.lines = file.readlines()
-
-        self.cur = 0
-        self.timeMs = 44 # adjust this if you want. 44 is at good timing tho. should be 34-50ms for it still to be subliminal
-
-        self.startedTime = datetime.datetime.now()
-        self.timeFile = open("./rectime.txt", "a")
-        self.timeFile.write(self.startedTime.strftime("date %Y-%m-%d\n"))
-
-        self.tm = QTimer()
-        self.tm.setInterval(self.timeMs)
-
-        self.tm.timeout.connect(self.changeText)
-
-        self.layout = qt.QGridLayout()
-        self.setLayout(self.layout)
-
-
-        self.text = qt.QLabel()
-        self.text.setAlignment(Qt.AlignHCenter)
-        self.font  = QFont("Arial", 60)
-        self.text.setFont(self.font)
-
-        self.layout.addWidget(self.text,0,0)
-        self.setMinimumSize(1600, 52)
-        self.tm.start()
-        self.show()
+        super().__init__(fpath, isRandom, isburst)
+        self.burstWaitMin = 4000
+        self.burstWaitMax = 35000
+        self.randMsgWaitMin = 5000
+        self.randMsgWaitMax = 10000
+        self.oneInProb = 4.5
 
     @Slot()
-    def changeText(self ):
+    def changeText(self):
         if self.isRand:
             self.text.setText(self.lines[random.randrange(0, len(self.lines))])
         else:
@@ -187,57 +135,31 @@ class surpriser(qt.QWidget):
         if self.isBurst and (self.cur % len(self.lines) == 0):
             QTest.qWait(self.timeMs)
             self.text.setText("")
-            if rnd < million / 4.5:
-                QTest.qWait(random.randrange(5000,10000))
+            if rnd < million / self.oneInProb:
+                QTest.qWait(random.randrange(self.randMsgWaitMin,self.randMsgWaitMax))
                 self.text.setText(self.lines[random.randrange(0, len(self.lines))])
                 QTest.qWait(self.timeMs)
                 self.text.setText("")
-            QTest.qWait(random.randrange(4000,35000))
+            QTest.qWait(random.randrange(self.burstWaitMin,self.burstWaitMax))
 
 
         self.cur += 1
 
-    def closeEvent(self, event: QCloseEvent):
-        delta = datetime.datetime.now() - self.startedTime
-        seconds = delta.total_seconds()
-        self.timeFile.write(str(seconds) + " seconds\n")
-        self.timeFile.close()
-
-        event.accept()
 
 
-
-
-
-class surpriserBird(qt.QWidget):
+class surpriserBird(windowBase):
     def __init__(self, fpath:str, isRandom: str, isburst: str):
-        super().__init__()
-        self.isRand = (isRandom == "random")
-        self.isBurst = (isburst == "burst")
-        with open(fpath, 'r') as file:
-            self.lines = file.readlines()
+        super().__init__(fpath, isRandom, isburst)
 
         self.burstsWithoutBirds = 0
-        self.cur = 0
-        self.timeMs = 44 # adjust this if you want. 44 is at good timing tho. should be 34-50ms for it still to be subliminal
+        self.burstWithoutMax = 8.0
+        self.oneInProb = 5.3
 
-        self.startedTime = datetime.datetime.now()
-        self.timeFile = open("./rectime.txt", "a")
-        self.timeFile.write(self.startedTime.strftime("date %Y-%m-%d\n"))
-
-        self.tm = QTimer()
-        self.tm.setInterval(self.timeMs)
-
-        self.tm.timeout.connect(self.changeText)
-
-        self.layout = qt.QGridLayout()
-        self.setLayout(self.layout)
-
-        self.text = qt.QLabel()
-        self.text.setAlignment(Qt.AlignHCenter)
-        self.font = QFont("Arial", 60)
-        self.text.setFont(self.font)
-
+        self.burstWaitMin = 6000
+        self.burstWaitMax = 20000
+        self.randMsgWaitMin = 5000
+        self.randMsgWaitMax = 10000
+        self.randMsgDelay = 100
 
         birdPaths = ["./bird1.wav","./bird2.wav", "./bird3.wav", "./bird4.wav"]
         self.sounds = [QSoundEffect(),QSoundEffect(),QSoundEffect(),QSoundEffect()]
@@ -247,13 +169,9 @@ class surpriserBird(qt.QWidget):
             self.sounds[i].setVolume(0.8)
             i += 1
 
-        self.layout.addWidget(self.text,0,0)
-        self.setMinimumSize(1600, 52)
-        self.tm.start()
-        self.show()
 
     @Slot()
-    def changeText(self ):
+    def changeText(self):
         if self.isRand:
             self.text.setText(self.lines[random.randrange(0, len(self.lines))])
         else:
@@ -264,37 +182,24 @@ class surpriserBird(qt.QWidget):
             QTest.qWait(self.timeMs)
             self.text.setText("")
 
-            if self.burstsWithoutBirds >= 9.0: # been damn long enough just play one now
-                QTest.qWait(random.randrange(5000,14000))
-                random.choice(self.sounds).play()
-                QTest.qWait(100)
-                self.text.setText(self.lines[random.randrange(0, len(self.lines))])
-                QTest.qWait(self.timeMs)
-                self.text.setText("")
-                self.burstsWithoutBirds = 0
-            elif rnd < million / 6.0:
-                QTest.qWait(random.randrange(5000,14000))
-                random.choice(self.sounds).play()
-                QTest.qWait(100)
-                self.text.setText(self.lines[random.randrange(0, len(self.lines))])
-                QTest.qWait(self.timeMs)
-                self.text.setText("")
+            if self.burstsWithoutBirds >= self.burstWithoutMax: # been damn long enough just play one now
+                self.playOneShowOne()
+            elif rnd < million / self.oneInProb:
+                self.playOneShowOne()
             else:
                 self.burstsWithoutBirds += 1
-            QTest.qWait(random.randrange(6000,20000))
+            QTest.qWait(random.randrange(self.burstWaitMin,self.burstWaitMax))
 
 
         self.cur += 1
 
-
-    def closeEvent(self, event: QCloseEvent):
-        delta = datetime.datetime.now() - self.startedTime
-        seconds = delta.total_seconds()
-        self.timeFile.write(str(seconds) + " seconds\n")
-        self.timeFile.close()
-
-        event.accept()
-
+    def playOneShowOne(self):
+        QTest.qWait(random.randrange(self.randMsgWaitMin,self.randMsgWaitMax))
+        random.choice(self.sounds).play()
+        QTest.qWait(self.randMsgDelay)
+        self.text.setText(self.lines[random.randrange(0, len(self.lines))])
+        QTest.qWait(self.timeMs)
+        self.text.setText("")
 
 
 if __name__=="__main__":
