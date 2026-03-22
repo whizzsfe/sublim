@@ -6,7 +6,6 @@ if __name__ == "__main__":
     with open("./rectime.txt", 'r') as file:
             lines = file.readlines()
 
-    i = 0
     recs = []
     byDay = {}
     for i in range(0, len(lines)):
@@ -21,7 +20,6 @@ if __name__ == "__main__":
                 byDay[day] = 0.0
             byDay[day] += float(secs)
 
-        i += 1
 
     total = 0.0
     for rec in recs:
