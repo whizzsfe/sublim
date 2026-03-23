@@ -11,7 +11,7 @@ should look like this
 
 or with specific options
 
-concious reinforcement
+conscious reinforcement
 ```C:\sublim\sublim.py ./messages.txt c```
 
 randomize. don't burst
