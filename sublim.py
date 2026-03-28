@@ -50,6 +50,7 @@ class windowBase(qt.QWidget):
         self.setMinimumSize(1600, 100)
         self.adjustSize()
         self.tm.start()
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.show()
 
 
@@ -166,7 +167,7 @@ class surpriserBird(windowBase):
         self.burstWaitMax = 20000
         self.randMsgWaitMin = 5000
         self.randMsgWaitMax = 10000
-        self.randMsgDelay = 100
+        self.soundRandMsgDelay = 100
 
         birdPaths = ["./bird1.wav","./bird2.wav", "./bird3.wav", "./bird4.wav"]
         self.sounds = [QSoundEffect(),QSoundEffect(),QSoundEffect(),QSoundEffect()]
@@ -203,7 +204,7 @@ class surpriserBird(windowBase):
     def playOneShowOne(self):
         QTest.qWait(random.randrange(self.randMsgWaitMin,self.randMsgWaitMax))
         random.choice(self.sounds).play()
-        QTest.qWait(self.randMsgDelay)
+        QTest.qWait(self.soundRandMsgDelay)
         self.text.setText(self.lines[random.randrange(0, len(self.lines))])
         QTest.qWait(self.timeMs)
         self.text.setText("")
