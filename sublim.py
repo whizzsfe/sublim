@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import PySide6.QtWidgets as qt
-from PySide6.QtGui import QFont, QCloseEvent, QPainter, QPen, QColor, QGraphicsOpacityEffect
+from PySide6.QtGui import QFont, QCloseEvent, QPainter, QPen, QColor, QPainterPath
+from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtCore import QTimer, Slot, QPointF
 from PySide6.QtTest import QTest
 from PySide6.QtCore import Qt
@@ -17,6 +18,11 @@ import datetime
 import math
 
 million = 1000000
+
+
+class _SessionClosed(Exception):
+    """Raised by _wait() when the window is closing, to unwind blocking call stacks."""
+    pass
 
 
 class SpiralWidget(qt.QWidget):
@@ -36,7 +42,7 @@ class SpiralWidget(qt.QWidget):
         self._spiralTimer.stop()
 
     def _tick(self):
-        self.rotAngle += 0.018  # ~1 revolution per 5.8 seconds
+        self.rotAngle += 0.013  # ~1 revolution per 7.5 seconds
         if self.rotAngle > 2 * math.pi:
             self.rotAngle -= 2 * math.pi
         self.update()
@@ -44,37 +50,64 @@ class SpiralWidget(qt.QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.fillRect(self.rect(), QColor(10, 10, 10))
+        painter.fillRect(self.rect(), QColor(8, 8, 15))
 
         w, h = self.width(), self.height()
         cx, cy = w / 2, h / 2
-        maxR = min(w, h) / 2 - 4
-        numTurns = 5
-        stepsPerTurn = 120
-        totalSteps = numTurns * stepsPerTurn
-        bandWidth = maxR / (numTurns * 2)
+        maxR = min(w, h) / 2 - 2
+        rMin  = 3.0
+        turns = 3.5
+        steps = 320
+        b = math.log(maxR / rMin) / (turns * 2 * math.pi)
 
-        prev_x, prev_y = cx, cy
-        for i in range(1, totalSteps + 1):
-            frac = i / totalSteps
-            theta = frac * numTurns * 2 * math.pi + self.rotAngle
-            r = frac * maxR
-            x = cx + r * math.cos(theta)
-            y = cy + r * math.sin(theta)
-            halfTurn = int(frac * numTurns * 2)
-            color = QColor(245, 230, 200) if halfTurn % 2 == 0 else QColor(10, 10, 10)
-            pen = QPen(color, bandWidth, Qt.PenStyle.SolidLine,
-                       Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
-            painter.setPen(pen)
-            painter.drawLine(QPointF(prev_x, prev_y), QPointF(x, y))
-            prev_x, prev_y = x, y
+        # Three evenly-spaced arms, two colour streams each (steel-blue + mauve)
+        numArms = 3
+        streams = [
+            # (edge_color,            centre_color,          alpha, angle_offset)
+            (QColor(45,  60,  95),  QColor(150, 175, 215),  58,  0.00),  # steel blue
+            (QColor(90,  55, 108),  QColor(180, 145, 198),  42,  0.22),  # mauve, slight offset
+        ]
+
+        for armIdx in range(numArms):
+            baseAngle = armIdx * (2 * math.pi / numArms) + self.rotAngle
+
+            for (edgeC, centreC, baseAlpha, offset) in streams:
+                er, eg, eb = edgeC.red(),   edgeC.green(),   edgeC.blue()
+                cr, cg, cb = centreC.red(), centreC.green(), centreC.blue()
+
+                pts = []
+                for i in range(steps + 1):
+                    frac  = i / steps
+                    theta = frac * turns * 2 * math.pi + baseAngle + offset
+                    r     = rMin * math.exp(b * frac * turns * 2 * math.pi)
+                    pts.append(QPointF(cx + r * math.cos(theta),
+                                       cy + r * math.sin(theta)))
+
+                for i in range(1, len(pts)):
+                    frac  = i / steps          # 0 = centre, 1 = edge
+                    rc    = int(cr + (er - cr) * frac)
+                    gc    = int(cg + (eg - cg) * frac)
+                    bc    = int(cb + (eb - cb) * frac)
+                    alpha = int(baseAlpha * (1.0 - frac * 0.45))
+                    pw    = 1.5 + (1.0 - frac ** 0.55) * maxR * 0.06
+                    painter.setPen(QPen(QColor(rc, gc, bc, alpha), pw,
+                                        Qt.PenStyle.SolidLine,
+                                        Qt.PenCapStyle.RoundCap))
+                    painter.drawLine(pts[i - 1], pts[i])
+
+        # Central tunnel glow
+        painter.setPen(Qt.PenStyle.NoPen)
+        for radius, alpha in [(80, 5), (40, 14), (16, 42), (6, 105), (2.5, 210)]:
+            painter.setBrush(QColor(210, 228, 255, alpha))
+            painter.drawEllipse(QPointF(cx, cy), float(radius), float(radius))
 
 
 class windowBase(qt.QWidget):
-    def __init__(self, fpath:str, isRandom: str, isburst: str, darkTheme: bool = False, bgAudio: str = None):
+    def __init__(self, fpath:str, isRandom: str, isburst: str, darkTheme: bool = False, bgAudio: str = None, locked: bool = False):
         super().__init__()
         self.isRand = (isRandom == "random")
         self.isBurst = (isburst == "burst")
+        self._locked = locked
         with open(fpath, 'r') as file:
             rawLines = file.readlines()
 
@@ -102,7 +135,7 @@ class windowBase(qt.QWidget):
         if bgAudio:
             self.bgSound = QSoundEffect()
             self.bgSound.setSource(QUrl.fromLocalFile(bgAudio))
-            self.bgSound.setLoopCount(QSoundEffect.Infinite)
+            self.bgSound.setLoopCount(-2)  # QSoundEffect.Infinite
             self.bgSound.setVolume(0.5)
             self.bgSound.play()
 
@@ -127,20 +160,38 @@ class windowBase(qt.QWidget):
         if darkTheme:
             self.setStyleSheet("background-color: #0a0a0a; color: #f5e6c8;")
 
+        self._closing = False
+        self._sessionDone = False
         self.tm.start()
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.show()
 
 
     def closeEvent(self, event: QCloseEvent):
+        if self._locked and not self._sessionDone:
+            event.ignore()
+            return
+        self._closing = True
+        self.tm.stop()
         if self.bgSound is not None:
             self.bgSound.stop()
         delta = datetime.datetime.now() - self.startedTime
         seconds = delta.total_seconds()
         self.timeFile.write(str(seconds) + " seconds\n")
         self.timeFile.close()
-
         event.accept()
+
+    def keyPressEvent(self, event):
+        if self._locked:
+            return  # swallow all keypresses
+        super().keyPressEvent(event)
+
+    def _wait(self, ms: int):
+        """Like QTest.qWait but raises _SessionClosed if the window is closing."""
+        if ms > 0:
+            QTest.qWait(ms)
+        if self._closing:
+            raise _SessionClosed()
 
     def _fadeShowText(self, msg: str, holdMs: int, style: str = "", fadeInMs: int = 300, fadeOutMs: int = 300):
         """Fade text in, hold, fade out. Uses QGraphicsOpacityEffect + QTest.qWait."""
@@ -152,11 +203,11 @@ class windowBase(qt.QWidget):
         self.text.setText(msg)
         for i in range(steps + 1):
             effect.setOpacity(i / steps)
-            QTest.qWait(max(1, fadeInMs // steps))
-        QTest.qWait(holdMs)
+            self._wait(max(1, fadeInMs // steps))
+        self._wait(holdMs)
         for i in range(steps, -1, -1):
             effect.setOpacity(i / steps)
-            QTest.qWait(max(1, fadeOutMs // steps))
+            self._wait(max(1, fadeOutMs // steps))
         self.text.setText("")
         self.text.setGraphicsEffect(None)
 
@@ -167,14 +218,14 @@ class windowBase(qt.QWidget):
             inMs = min(4000, remaining)
             self.text.setStyleSheet("color: #7ec8e3;")
             self.text.setText("breathe in...")
-            QTest.qWait(inMs)
+            self._wait(inMs)
             elapsed += inMs
             if elapsed >= totalMs:
                 break
             holdMs = min(4000, totalMs - elapsed)
             self.text.setStyleSheet("color: #b8a9c9;")
             self.text.setText("hold.")
-            QTest.qWait(holdMs)
+            self._wait(holdMs)
             elapsed += holdMs
             if elapsed >= totalMs:
                 break
@@ -183,15 +234,15 @@ class windowBase(qt.QWidget):
             self.text.setText("breathe out...")
             if flashMsg and outMs >= 3000:
                 # Flash suggestion at the relaxation peak of the exhale
-                QTest.qWait(2800)
+                self._wait(2800)
                 self.text.setStyleSheet("color: #f5e6c8;")
                 self.text.setText(flashMsg.strip())
-                QTest.qWait(min(self.timeMs * 8, outMs - 2800))
+                self._wait(min(self.timeMs * 8, outMs - 2800))
                 self.text.setStyleSheet("color: #a8c5a0;")
                 self.text.setText("breathe out...")
-                QTest.qWait(max(0, outMs - 2800 - min(self.timeMs * 8, outMs - 2800)))
+                self._wait(max(0, outMs - 2800 - min(self.timeMs * 8, outMs - 2800)))
             else:
-                QTest.qWait(outMs)
+                self._wait(outMs)
             elapsed += outMs
         self.text.setStyleSheet("")
         self.text.setText("")
@@ -205,17 +256,20 @@ class window(windowBase):
 
     @Slot()
     def changeText(self):
-        if self.isRand:
-            self.text.setText(self.lines[random.randrange(0, len(self.lines))])
-        else:
-            self.text.setText(self.lines[self.cur % len(self.lines)])
+        try:
+            if self.isRand:
+                self.text.setText(self.lines[random.randrange(0, len(self.lines))])
+            else:
+                self.text.setText(self.lines[self.cur % len(self.lines)])
 
-        if self.isBurst and (self.cur % len(self.lines) == 0):
-            QTest.qWait(self.timeMs)
-            self.text.setText("")
-            QTest.qWait(random.randrange(self.burstWaitMin ,self.burstWaitMax))
+            if self.isBurst and (self.cur % len(self.lines) == 0):
+                self._wait(self.timeMs)
+                self.text.setText("")
+                self._wait(random.randrange(self.burstWaitMin, self.burstWaitMax))
 
-        self.cur += 1
+            self.cur += 1
+        except _SessionClosed:
+            pass
 
 
 class consiousReinforcement(windowBase):
@@ -243,16 +297,19 @@ class consiousReinforcement(windowBase):
         else:
             self.text.setText(self.lines[self.cur % len(self.lines)])
         self.shownMsgsSl += 1
-        if self.readable:
-            QTest.qWait(self.readableWait)
-            self.readable=False
-            self.shownMsgsSl = 0 # reset
-        if self.isBurst and (self.cur % len(self.lines) == 0):
-            QTest.qWait(self.timeMs)
-            self.text.setText("")
-            QTest.qWait(random.randrange(self.burstWaitMin,self.burstWaitMax))
+        try:
+            if self.readable:
+                self._wait(self.readableWait)
+                self.readable=False
+                self.shownMsgsSl = 0 # reset
+            if self.isBurst and (self.cur % len(self.lines) == 0):
+                self._wait(self.timeMs)
+                self.text.setText("")
+                self._wait(random.randrange(self.burstWaitMin,self.burstWaitMax))
 
-        self.cur += 1
+            self.cur += 1
+        except _SessionClosed:
+            pass
 
 
 
@@ -273,20 +330,21 @@ class surpriser(windowBase):
         else:
             self.text.setText(self.lines[self.cur % len(self.lines)])
 
-        rnd = random.randrange(0,million)
-        if self.isBurst and (self.cur % len(self.lines) == 0):
-            QTest.qWait(self.timeMs)
-            self.text.setText("")
-            if rnd < million / self.oneInProb:
-                QTest.qWait(random.randrange(self.randMsgWaitMin,self.randMsgWaitMax))
-                self.text.setText(self.lines[random.randrange(0, len(self.lines))])
-                QTest.qWait(self.timeMs)
+        try:
+            rnd = random.randrange(0,million)
+            if self.isBurst and (self.cur % len(self.lines) == 0):
+                self._wait(self.timeMs)
                 self.text.setText("")
-            QTest.qWait(random.randrange(self.burstWaitMin,self.burstWaitMax))
+                if rnd < million / self.oneInProb:
+                    self._wait(random.randrange(self.randMsgWaitMin,self.randMsgWaitMax))
+                    self.text.setText(self.lines[random.randrange(0, len(self.lines))])
+                    self._wait(self.timeMs)
+                    self.text.setText("")
+                self._wait(random.randrange(self.burstWaitMin,self.burstWaitMax))
 
-
-        self.cur += 1
-
+            self.cur += 1
+        except _SessionClosed:
+            pass
 
 
 class surpriserBird(windowBase):
@@ -319,28 +377,30 @@ class surpriserBird(windowBase):
         else:
             self.text.setText(self.lines[self.cur % len(self.lines)])
 
-        rnd = random.randrange(0,million)
-        if self.isBurst and (self.cur % len(self.lines) == 0):
-            QTest.qWait(self.timeMs)
-            self.text.setText("")
+        try:
+            rnd = random.randrange(0,million)
+            if self.isBurst and (self.cur % len(self.lines) == 0):
+                self._wait(self.timeMs)
+                self.text.setText("")
 
-            if self.burstsWithoutBirds >= self.burstWithoutMax: # been damn long enough just play one now
-                self.playOneShowOne()
-            elif rnd < million / self.oneInProb:
-                self.playOneShowOne()
-            else:
-                self.burstsWithoutBirds += 1
-            QTest.qWait(random.randrange(self.burstWaitMin,self.burstWaitMax))
+                if self.burstsWithoutBirds >= self.burstWithoutMax: # been damn long enough just play one now
+                    self.playOneShowOne()
+                elif rnd < million / self.oneInProb:
+                    self.playOneShowOne()
+                else:
+                    self.burstsWithoutBirds += 1
+                self._wait(random.randrange(self.burstWaitMin,self.burstWaitMax))
 
-
-        self.cur += 1
+            self.cur += 1
+        except _SessionClosed:
+            pass
 
     def playOneShowOne(self):
-        QTest.qWait(random.randrange(self.randMsgWaitMin,self.randMsgWaitMax))
+        self._wait(random.randrange(self.randMsgWaitMin,self.randMsgWaitMax))
         random.choice(self.sounds).play()
-        QTest.qWait(self.soundRandMsgDelay)
+        self._wait(self.soundRandMsgDelay)
         self.text.setText(self.lines[random.randrange(0, len(self.lines))])
-        QTest.qWait(self.timeMs)
+        self._wait(self.timeMs)
         self.text.setText("")
 
 
@@ -405,7 +465,10 @@ class hypnoSession(windowBase):
         self.spiral.startSpinning()
 
         # Run body-scan relaxation before induction begins
-        self._progressiveRelaxation()
+        try:
+            self._progressiveRelaxation()
+        except _SessionClosed:
+            return
 
         # Start timer at slow induction speed
         self.timeMs = self.inductionMs
@@ -434,16 +497,19 @@ class hypnoSession(windowBase):
 
     @Slot()
     def changeText(self):
-        elapsed = (datetime.datetime.now() - self.startedTime).total_seconds()
+        try:
+            elapsed = (datetime.datetime.now() - self.startedTime).total_seconds()
 
-        if elapsed < self.inductionEnd:
-            self._runInduction()
-        elif elapsed < self.deepeningEnd:
-            self._runDeepening()
-        elif elapsed < self.deliveryEnd:
-            self._runDelivery()
-        elif not self._emerged:
-            self._runEmergence()
+            if elapsed < self.inductionEnd:
+                self._runInduction()
+            elif elapsed < self.deepeningEnd:
+                self._runDeepening()
+            elif elapsed < self.deliveryEnd:
+                self._runDelivery()
+            elif not self._emerged:
+                self._runEmergence()
+        except _SessionClosed:
+            pass
 
     def _inductionMsg(self):
         pool = self.inductionLines if self.inductionLines else self.lines
@@ -473,7 +539,7 @@ class hypnoSession(windowBase):
         self.text.setStyleSheet("")
         self.text.setText(self.lines[random.randrange(len(self.lines))])
         if self.cur % len(self.lines) == 0:
-            QTest.qWait(self.timeMs)
+            self._wait(self.timeMs)
             self.text.setText("")
             gapMs = random.randrange(self.burstWaitMin, self.burstWaitMax)
             rnd = random.randrange(0, million)
@@ -484,11 +550,11 @@ class hypnoSession(windowBase):
             elif rnd < million / 2.5:
                 # Deepener phrase mid-gap
                 deepener = random.choice(self.deepeners)
-                QTest.qWait(random.randrange(1500, 4000))
+                self._wait(random.randrange(1500, 4000))
                 self._fadeShowText(deepener, 2000, style="color: #c8b8d8;", fadeInMs=300, fadeOutMs=500)
-                QTest.qWait(max(0, gapMs - 7500))
+                self._wait(max(0, gapMs - 7500))
             else:
-                QTest.qWait(gapMs)
+                self._wait(gapMs)
         self.cur += 1
 
     def _runEmergence(self):
@@ -502,23 +568,33 @@ class hypnoSession(windowBase):
             t = int(self.subliminalMs + (400 - self.subliminalMs) * (i / rampSteps))
             self.text.setStyleSheet("color: #f5e6c8;")
             self.text.setText(self.lines[random.randrange(len(self.lines))].strip())
-            QTest.qWait(t)
+            self._wait(t)
 
         self.text.setText("")
         self.breathingGuide(14000)
 
         for msg in self.emergeLines:
             self._fadeShowText(msg, 2500, style="color: #f5e6c8;", fadeInMs=600, fadeOutMs=600)
-            QTest.qWait(500)
+            self._wait(500)
 
         self.breathingGuide(14000)
 
         self._fadeShowText("awaken.", 4000, style="color: #f5e6c8;", fadeInMs=800, fadeOutMs=800)
+        self._sessionDone = True
         self.close()
 
 
 if __name__=="__main__":
+    import signal
     app=qt.QApplication()
+
+    # Parse locked flag
+    locked = "lock" in sys.argv
+    if locked:
+        sys.argv = [a for a in sys.argv if a != "lock"]
+        signal.signal(signal.SIGINT, signal.SIG_IGN)  # ignore Ctrl+C
+    else:
+        signal.signal(signal.SIGINT, lambda *_: app.quit())
 
     # Parse bg audio flag: `bg ./file.wav` can appear anywhere after the file path arg
     bgAudio = None

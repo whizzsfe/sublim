@@ -63,6 +63,12 @@ sublim.py ./messages.txt s bg ./theta.wav
 sublim.py ./messages.txt hypno 20 bg ./theta.wav
 ```
 
+**Lock mode** — disables all exit methods (close button, Alt+F4, keyboard). Session still ends naturally when `hypno` duration completes. Ctrl+C is also ignored.
+```
+sublim.py ./messages.txt hypno 45 lock
+sublim.py ./messages.txt hypno 45 bg ./theta.wav induction ./induction.txt lock
+```
+
 ---
 
 ## hypno mode
